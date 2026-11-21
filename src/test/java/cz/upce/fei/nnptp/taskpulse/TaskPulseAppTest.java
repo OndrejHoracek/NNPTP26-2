@@ -7,8 +7,12 @@ import cz.upce.fei.nnptp.taskpulse.storage.csv.CsvStorageManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +57,25 @@ class TaskPulseAppTest {
         Worklog worklog = onlyTask().getWorklogs().get(0);
         assertThat(worklog.author()).isEqualTo("Student Developer");
         assertThat(worklog.description()).isEqualTo("First pass");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"y, 0", "n, 1"})
+    void oneShotTaskDeleteAsksForConfirmationOnStandardInput(String answer, int remainingTasks) {
+        TaskPulseApp.run(new String[]{"project", "add", "Course"}, dataDir);
+        String projectId = onlyProject().getId().toString();
+        TaskPulseApp.run(new String[]{"task", "add", projectId, "Remove me"}, dataDir);
+        String taskId = onlyTask().getId().toString();
+
+        InputStream originalIn = System.in;
+        try {
+            System.setIn(new ByteArrayInputStream((answer + "\n").getBytes(StandardCharsets.UTF_8)));
+            TaskPulseApp.run(new String[]{"task", "delete", taskId}, dataDir);
+        } finally {
+            System.setIn(originalIn);
+        }
+
+        assertThat(new CsvStorageManager(dataDir).load().taskRepository().findAll()).hasSize(remainingTasks);
     }
 
     private Project onlyProject() {
