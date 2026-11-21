@@ -10,6 +10,11 @@ with `--`, for example `task list --search=--overdue` or
 The space-separated form still rejects another switch as a missing value.
 Unknown options and value options without a following value are rejected.
 
+The estimate overrun filter accepts both `task list --exceeded 10` and
+`task list --exceeded=10`. Both show tasks whose recorded time exceeds their
+estimate by more than 10 minutes. `--exceeded` and `--exceeded=` use a zero-minute
+threshold. Negative or invalid thresholds are rejected.
+
 ## Task creation options
 
 ```text

@@ -90,4 +90,14 @@ class CliOptionsTest {
         assertThat(options.get("--exceeded")).isEqualTo("30");
         assertThat(options.get("--state")).isEqualTo("TODO");
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"--exceeded=30", "--EXCEEDED=30"})
+    void acceptsExceededThresholdWithEqualsBeforeAnotherSwitch(String option) {
+        CliOptions options = CliOptions.parse(List.of("list", option, "--state", "TODO"), 1);
+
+        assertThat(options.has("--exceeded")).isTrue();
+        assertThat(options.get("--exceeded")).isEqualTo("30");
+        assertThat(options.get("--state")).isEqualTo("TODO");
+    }
 }

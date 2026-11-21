@@ -33,7 +33,7 @@ final class CliOptions {
             }
 
             if (equalsIndex >= 0) {
-                if (VALUE_OPTIONS.contains(name)) {
+                if (VALUE_OPTIONS.contains(name) || name.equals("--exceeded")) {
                     options.values.put(name, argument.substring(equalsIndex + 1));
                 }
             } else if (FLAGS.contains(name)) {
