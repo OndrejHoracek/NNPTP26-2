@@ -100,4 +100,27 @@ class CliOptionsTest {
         assertThat(options.get("--exceeded")).isEqualTo("30");
         assertThat(options.get("--state")).isEqualTo("TODO");
     }
+
+    @Test
+    void acceptsExceededWithoutTrailingThreshold() {
+        CliOptions options = CliOptions.parse(List.of("--exceeded"), 0);
+
+        assertThat(options.has("--exceeded")).isTrue();
+        assertThat(options.get("--exceeded")).isEmpty();
+    }
+
+    @Test
+    void ignoresFlagWithEqualsValueWithoutConsumingFollowingOption() {
+        CliOptions options = CliOptions.parse(List.of("--overdue=true", "--state", "TODO"), 0);
+
+        assertThat(options.has("--overdue")).isFalse();
+        assertThat(options.get("--state")).isEqualTo("TODO");
+    }
+
+    @Test
+    void skipsPositionalArgumentsWithoutConsumingFollowingOption() {
+        CliOptions options = CliOptions.parse(List.of("list", "--state", "TODO"), 0);
+
+        assertThat(options.get("--state")).isEqualTo("TODO");
+    }
 }
