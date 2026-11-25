@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public final class CsvUtils {
+    private static final int END_OF_STREAM = -1;
+
     private CsvUtils() {
     }
 
@@ -37,10 +39,10 @@ public final class CsvUtils {
         StringBuilder currentField = new StringBuilder();
 
         boolean inQuotes = false;
-        int prev = -1;
+        boolean quoteClosed = false;
         int current;
 
-        while ((current = bufferedReader.read()) != -1) {
+        while ((current = bufferedReader.read()) != END_OF_STREAM) {
             char ch = (char) current;
 
             if (inQuotes) {
@@ -51,7 +53,8 @@ public final class CsvUtils {
                         currentField.append('\"');
                     } else {
                         inQuotes = false;
-                        if (next != -1) {
+                        quoteClosed = true;
+                        if (next != END_OF_STREAM) {
                             bufferedReader.reset();
                         }
                     }
@@ -59,33 +62,41 @@ public final class CsvUtils {
                     currentField.append(ch);
                 }
             } else {
+                if (quoteClosed && ch != ',' && ch != '\r' && ch != '\n') {
+                    throw new StorageException("Invalid CSV: expected a comma or line ending after closing quote");
+                }
                 if (ch == '\"') {
+                    if (!currentField.isEmpty()) {
+                        throw new StorageException("Invalid CSV: double quote must appear at the start of a field");
+                    }
                     inQuotes = true;
                 } else if (ch == ',') {
                     currentRow.add(currentField.toString());
                     currentField.setLength(0);
+                    quoteClosed = false;
                 } else if (ch == '\r') {
                     bufferedReader.mark(1);
                     int next = bufferedReader.read();
-                    if (next != '\n' && next != -1) {
+                    if (next != '\n' && next != END_OF_STREAM) {
                         bufferedReader.reset();
                     }
                     currentRow.add(currentField.toString());
                     currentField.setLength(0);
                     rows.add(new ArrayList<>(currentRow));
                     currentRow.clear();
+                    quoteClosed = false;
                 } else if (ch == '\n') {
                     currentRow.add(currentField.toString());
                     currentField.setLength(0);
                     rows.add(new ArrayList<>(currentRow));
                     currentRow.clear();
+                    quoteClosed = false;
                 } else {
                     currentField.append(ch);
                 }
             }
-            prev = current;
         }
-        
+
         if (inQuotes) {
             throw new StorageException("Invalid CSV: unclosed double quote at end of file");
         }

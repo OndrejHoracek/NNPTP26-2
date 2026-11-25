@@ -30,6 +30,8 @@ public final class MarkdownReportExporter implements ReportExporter {
 
         long overdueCount = 0L;
         long totalRecordedMinutes = 0L;
+        long totalEstimatedMinutes = 0L;
+        long totalVarianceMinutes = 0L;
         for (Task task : tasks) {
             Objects.requireNonNull(task, "Task must not be null");
             countByState.merge(task.getState(), 1L, Long::sum);
@@ -37,6 +39,11 @@ public final class MarkdownReportExporter implements ReportExporter {
                 overdueCount++;
             }
             totalRecordedMinutes += task.getTotalRecordedMinutes();
+            Long varianceMinutes = task.getVarianceMinutes();
+            if (varianceMinutes != null) {
+                totalEstimatedMinutes += task.getEstimatedMinutes();
+                totalVarianceMinutes += varianceMinutes;
+            }
         }
 
         StringBuilder md = new StringBuilder();
@@ -54,11 +61,14 @@ public final class MarkdownReportExporter implements ReportExporter {
         }
         md.append("| Overdue | ").append(overdueCount).append(" |").append('\n');
         md.append("| Total recorded minutes | ").append(totalRecordedMinutes).append(" |").append('\n');
+        md.append("| Total estimated minutes | ").append(totalEstimatedMinutes).append(" |").append('\n');
+        md.append("| Total variance minutes | ").append(totalVarianceMinutes).append(" |").append('\n');
         md.append('\n');
         md.append("## Tasks").append('\n');
         md.append('\n');
-        md.append("| ID | Title | State | Priority | Due date | Estimate (min) | Recorded (min) |").append('\n');
-        md.append("| --- | --- | --- | --- | --- | --- | --- |").append('\n');
+        md.append("| ID | Title | State | Priority | Due date | Estimate (min) | Recorded (min) | Variance (min) |")
+                .append('\n');
+        md.append("| --- | --- | --- | --- | --- | --- | --- | --- |").append('\n');
 
         for (Task task : tasks) {
             md.append("| ")
@@ -75,6 +85,8 @@ public final class MarkdownReportExporter implements ReportExporter {
                     .append(formatEstimate(task.getEstimatedMinutes()))
                     .append(" | ")
                     .append(task.getTotalRecordedMinutes())
+                    .append(" | ")
+                    .append(formatVariance(task.getVarianceMinutes()))
                     .append(" |")
                     .append('\n');
         }
@@ -89,6 +101,16 @@ public final class MarkdownReportExporter implements ReportExporter {
         return Integer.toString(estimatedMinutes);
     }
 
+    /**
+     * Formats the estimate variance of a single task; tasks without an estimate have no variance.
+     */
+    static String formatVariance(Long varianceMinutes) {
+        if (varianceMinutes == null) {
+            return UNESTIMATED;
+        }
+        return Long.toString(varianceMinutes);
+    }
+
     static String formatDueDate(LocalDate dueDate) {
         if (dueDate == null) {
             return "-";
@@ -97,14 +119,17 @@ public final class MarkdownReportExporter implements ReportExporter {
     }
 
     /**
-     * Escapes values used inside Markdown table cells so pipes and newlines
-     * cannot break table structure.
+     * Preserves literal HTML tags and entities in table cells and keeps pipes
+     * and newlines from breaking the table structure.
      */
     static String escapeCell(String value) {
         if (value == null || value.isEmpty()) {
             return "";
         }
         return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
                 .replace("\\", "\\\\")
                 .replace("|", "\\|")
                 .replace("\r\n", " ")

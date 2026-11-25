@@ -74,6 +74,50 @@ class CsvStorageManagerTest {
     }
 
     @Test
+    void failedSaveShouldPreserveExistingCsvContent() throws IOException {
+        CsvStorageManager storage = new CsvStorageManager(tempDir);
+        InMemoryTaskRepository taskRepo = new InMemoryTaskRepository();
+
+        InMemoryProjectRepository originalRepo = new InMemoryProjectRepository();
+        originalRepo.save(new Project(UUID.randomUUID(), "Original", "Original data"));
+
+        storage.save(originalRepo, taskRepo);
+
+        Path projectsFile = tempDir.resolve("projects.csv");
+        byte[] originalContent = Files.readAllBytes(projectsFile);
+
+        InMemoryProjectRepository failingRepo = new InMemoryProjectRepository() {
+            @Override
+            public List<Project> findAll() {
+                return java.util.Arrays.asList(
+                    new Project(UUID.randomUUID(), "Updated", "New data"),
+                    null
+                );
+            }
+        };
+
+        assertThatThrownBy(() -> storage.save(failingRepo, taskRepo))
+            .isInstanceOf(NullPointerException.class);
+
+        assertThat(Files.readAllBytes(projectsFile))
+            .isEqualTo(originalContent);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Co\"ur\"se", "\"Course\"oops"})
+    void rejectsMalformedQuotesWithoutChangingSourceFile(String name) throws IOException {
+        Path source = tempDir.resolve("projects.csv");
+        Files.writeString(source, "id,name,description\n" + UUID.randomUUID() + "," + name + ",Description\n");
+        byte[] originalContent = Files.readAllBytes(source);
+        CsvStorageManager storage = new CsvStorageManager(tempDir);
+
+        assertThatThrownBy(storage::load)
+                .isInstanceOf(StorageException.class)
+                .hasMessageContaining("Failed to load projects.csv", "Invalid CSV");
+        assertThat(Files.readAllBytes(source)).isEqualTo(originalContent);
+    }
+
+    @Test
     void loadFromNonExistentDirectoryInitializesEmptyWorkspace() {
         Path nonExistent = tempDir.resolve("does_not_exist");
         CsvStorageManager storage = new CsvStorageManager(nonExistent);
@@ -166,6 +210,72 @@ class CsvStorageManagerTest {
         assertThatThrownBy(storage::load)
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Malformed row in projects.csv at line 2");
+    }
+
+    @Test
+    void rejectReorderedHeaderInsteadOfMappingColumnsByPosition() throws IOException {
+        Files.writeString(tempDir.resolve("projects.csv"),
+                "id,description,name\n" + UUID.randomUUID() + ",Some description,Name\n");
+
+        CsvStorageManager storage = new CsvStorageManager(tempDir);
+        assertThatThrownBy(storage::load)
+                .isInstanceOf(StorageException.class)
+                .hasMessageContaining("Unsupported header in projects.csv")
+                .hasMessageContaining("expected 'id,name,description'")
+                .hasMessageContaining("found 'id,description,name'");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"projects.csv", "tasks.csv", "worklogs.csv"})
+    void rejectUnknownHeaderInEveryCsvFile(String fileName) throws IOException {
+        Files.writeString(tempDir.resolve(fileName), "foo,bar\n");
+
+        CsvStorageManager storage = new CsvStorageManager(tempDir);
+        assertThatThrownBy(storage::load)
+                .isInstanceOf(StorageException.class)
+                .hasMessageContaining("Unsupported header in " + fileName);
+    }
+
+    @Test
+    void rejectHeaderWithMissingColumn() throws IOException {
+        Files.writeString(tempDir.resolve("worklogs.csv"), "taskId,timestamp,durationMinutes,author\n");
+
+        CsvStorageManager storage = new CsvStorageManager(tempDir);
+        assertThatThrownBy(storage::load)
+                .isInstanceOf(StorageException.class)
+                .hasMessageContaining("Unsupported header in worklogs.csv");
+    }
+
+    @Test
+    void acceptHeaderWithSurroundingWhitespace() throws IOException {
+        UUID id = UUID.randomUUID();
+        Files.writeString(tempDir.resolve("projects.csv"),
+                " id , name , description \n" + id + ",Name,Description\n");
+
+        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+
+        assertThat(workspace.projectRepository().findById(id)).isPresent();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"id", "\"id\""})
+    void acceptHeaderStartingWithUtf8ByteOrderMark(String firstColumn) throws IOException {
+        UUID id = UUID.randomUUID();
+        Files.writeString(tempDir.resolve("projects.csv"),
+                "\uFEFF" + firstColumn + ",name,description\n" + id + ",Name,Description\n");
+
+        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+
+        assertThat(workspace.projectRepository().findById(id)).isPresent();
+    }
+
+    @Test
+    void acceptEmptyCsvFileWithoutHeader() throws IOException {
+        Files.writeString(tempDir.resolve("projects.csv"), "");
+
+        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+
+        assertThat(workspace.projectRepository().findAll()).isEmpty();
     }
 
     @ParameterizedTest
