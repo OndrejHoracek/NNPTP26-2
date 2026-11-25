@@ -47,6 +47,7 @@ public class TaskPulseCli {
     public TaskPulseCli(ProjectService projectService, TaskService taskService,
                         WorkspaceBackup backup, PrintStream out, PrintStream err) {
         this(projectService, taskService, out, err);
+        this.input = new Scanner(System.in);
         handlers.put("workspace", new WorkspaceCliHandler(backup, out));
     }
 

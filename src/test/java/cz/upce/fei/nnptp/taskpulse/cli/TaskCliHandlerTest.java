@@ -36,7 +36,7 @@ class TaskCliHandlerTest {
         var projects = new ProjectService(projectRepo, taskRepo);
         tasks = new TaskService(taskRepo, projectRepo);
         projectId = projects.createProject("Course", "").getId();
-        handler = new TaskCliHandler(tasks,
+        handler = new TaskCliHandler(tasks, () -> "n",
                 new PrintStream(stdout, true, StandardCharsets.UTF_8),
                 new PrintStream(stderr, true, StandardCharsets.UTF_8));
     }
@@ -185,7 +185,7 @@ class TaskCliHandlerTest {
     @Test
     void deletionRemovesTask() {
         var task = tasks.createTask(projectId, "Temporary", "", Priority.MEDIUM, null, null);
-        handler.handle(List.of("delete", task.getId().toString()));
+        handler.handle(List.of("delete", task.getId().toString(), "--yes"));
         assertThat(tasks.listTasks()).isEmpty();
         assertThat(stdout.toString(StandardCharsets.UTF_8)).contains("Task deleted: " + task.getId());
     }
