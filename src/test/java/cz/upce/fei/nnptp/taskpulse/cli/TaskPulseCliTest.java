@@ -526,6 +526,26 @@ class TaskPulseCliTest {
         assertThat(errContent.toString()).contains(expectedError);
         assertThat(outContent.toString()).isEmpty();
     }
+    
+    @Test
+    void taskListReportsUnknownProject() {
+        String unknownId = UUID.randomUUID().toString();
+
+        cli.executeLine("task list --project " + unknownId);
+
+        assertThat(errContent.toString()).contains("Error: Project not found with id: " + unknownId);
+        assertThat(outContent.toString()).isEmpty();
+    }
+
+    @Test
+    void taskListShowsNoTasksForExistingEmptyProject() {
+        Project project = projectService.createProject("Empty", "");
+
+        cli.executeLine("task list --project " + project.getId());
+
+        assertThat(outContent.toString()).contains("No tasks found.");
+        assertThat(errContent.toString()).isEmpty();
+    }
 
     @ParameterizedTest
     @CsvSource({"-1, non-negative", "later, whole number", "9223372036854775808, whole number"})

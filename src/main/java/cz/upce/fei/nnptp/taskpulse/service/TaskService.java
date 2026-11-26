@@ -111,6 +111,9 @@ public class TaskService {
 
     public List<Task> findTasks(TaskQuery query) {
         Objects.requireNonNull(query, "Query must not be null");
+        if (query.projectId() != null && !projectRepository.existsById(query.projectId())) {
+            throw new ResourceNotFoundException("Project not found with id: " + query.projectId());
+        }
         LocalDate today = LocalDate.now(clock);
         TaskSpecification specification = TaskQueryEvaluator.toSpecification(query, today);
 
