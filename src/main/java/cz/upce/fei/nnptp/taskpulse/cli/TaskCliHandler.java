@@ -13,14 +13,17 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 final class TaskCliHandler implements CliCommandHandler {
     private final TaskService taskService;
+    private final Supplier<String> input;
     private final PrintStream out;
     private final PrintStream err;
 
-    TaskCliHandler(TaskService taskService, PrintStream out, PrintStream err) {
+    TaskCliHandler(TaskService taskService, Supplier<String> input, PrintStream out, PrintStream err) {
         this.taskService = taskService;
+        this.input = input;
         this.out = out;
         this.err = err;
     }
@@ -193,16 +196,28 @@ final class TaskCliHandler implements CliCommandHandler {
             }
             case "delete" -> {
                 if (args.size() < 2) {
-                    err.println("Usage: task delete <task-id>");
+                    err.println("Usage: task delete <task-id> [--yes]");
                     return;
                 }
                 UUID id = TaskPulseCli.parseUuid(args.get(1));
+                Task task = taskService.getTask(id);
+                CliOptions options = CliOptions.parse(args, 2);
+                if (!options.has("--yes") && !confirmDeletion(task)) {
+                    out.println("Deletion cancelled.");
+                    return;
+                }
                 taskService.deleteTask(id);
                 out.println("Task deleted: " + id);
             }
-            
             default -> err.println("Unknown task action: '" + action + "'");
         }
+    }
+
+    private boolean confirmDeletion(Task task) {
+        out.print("Delete task " + task.getId() + " - " + task.getTitle() + "? [y/N]: ");
+        out.flush();
+        String answer = input.get();
+        return answer != null && answer.strip().equalsIgnoreCase("y");
     }
 
     private long parseVarianceThreshold(String value) {

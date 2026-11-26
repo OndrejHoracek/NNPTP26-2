@@ -19,6 +19,7 @@ public class TaskPulseCli {
     private final PrintStream out;
     private final PrintStream err;
     private final CliErrorHandler errorHandler;
+    private Scanner input;
 
     public TaskPulseCli(ProjectService projectService, TaskService taskService, PrintStream out, PrintStream err) {
         this(projectService, taskService, out, err, Clock.systemDefaultZone());
@@ -33,22 +34,25 @@ public class TaskPulseCli {
         this.err = Objects.requireNonNull(err, "err must not be null");
         this.errorHandler = new CliErrorHandler(this.err);
         handlers.put("project", new ProjectCliHandler(projectService, out, err));
-        handlers.put("task", new TaskCliHandler(taskService, out, err));
+        handlers.put("task", new TaskCliHandler(taskService, this::readLine, out, err));
         handlers.put("worklog", new WorklogCliHandler(taskService, out, err));
         handlers.put("report", new ReportCliHandler(projectService, taskService, out, err, clock));
     }
 
     public TaskPulseCli(ProjectService projectService, TaskService taskService) {
         this(projectService, taskService, System.out, System.err);
+        this.input = new Scanner(System.in);
     }
 
     public TaskPulseCli(ProjectService projectService, TaskService taskService,
                         WorkspaceBackup backup, PrintStream out, PrintStream err) {
         this(projectService, taskService, out, err);
+        this.input = new Scanner(System.in);
         handlers.put("workspace", new WorkspaceCliHandler(backup, out));
     }
 
     public void runInteractive(Scanner scanner) {
+        this.input = scanner;
         out.println("TaskPulse CLI — type 'help' for commands, 'exit' to quit.");
         while (scanner.hasNextLine()) {
             String line = scanner.nextLine();
@@ -106,6 +110,10 @@ public class TaskPulseCli {
         return true;
     }
 
+    private String readLine() {
+        return input != null && input.hasNextLine() ? input.nextLine() : null;
+    }
+
     private void printHelp() {
         out.println("Available commands:");
         out.println("  project add <name> [description]");
@@ -122,7 +130,7 @@ public class TaskPulseCli {
         out.println("  task transition <task-id> <state>");
         out.println("  task label add <task-id> <label>");
         out.println("  task label remove <task-id> <label>");
-        out.println("  task delete <task-id>");
+        out.println("  task delete <task-id> [--yes]");
         out.println("  worklog log <task-id> <durationMinutes> --author <author> [--desc <description>]");
         out.println("  worklog list <task-id>");
         out.println("  " + ReportCliHandler.USAGE);

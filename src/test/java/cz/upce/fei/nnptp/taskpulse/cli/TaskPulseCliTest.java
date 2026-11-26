@@ -482,6 +482,63 @@ class TaskPulseCliTest {
         assertThat(outContent.toString()).contains("TaskPulse CLI", "Available commands:");
     }
 
+    @Test
+    void taskDeleteIsCancelledWhenNotConfirmed() {
+        UUID projectId = projectService.createProject("Course", "").getId();
+        Task task = taskService.createTask(projectId, "Keep me", "", Priority.MEDIUM, null, null);
+
+        cli.runInteractive(new Scanner("task delete " + task.getId() + "\nn\nexit\n"));
+
+        assertThat(outContent.toString()).contains("Keep me", "[y/N]", "Deletion cancelled.")
+                .doesNotContain("Task deleted");
+        assertThat(taskService.listTasks()).containsExactly(task);
+    }
+
+    @Test
+    void taskDeleteWithoutInputIsCancelled() {
+        UUID projectId = projectService.createProject("Course", "").getId();
+        Task task = taskService.createTask(projectId, "Keep me", "", Priority.MEDIUM, null, null);
+
+        cli.executeLine("task delete " + task.getId());
+
+        assertThat(outContent.toString()).contains("Deletion cancelled.").doesNotContain("Task deleted");
+        assertThat(taskService.listTasks()).containsExactly(task);
+    }
+
+    @Test
+    void taskDeleteWithConfirmationRemovesTask() {
+        UUID projectId = projectService.createProject("Course", "").getId();
+        Task task = taskService.createTask(projectId, "Remove me", "", Priority.MEDIUM, null, null);
+
+        cli.executeLine("task delete " + task.getId() + " --yes");
+
+        assertThat(taskService.listTasks()).isEmpty();
+        assertThat(outContent.toString()).contains("Task deleted: " + task.getId());
+        assertThat(errContent.toString()).isEmpty();
+    }
+
+    @Test
+    void taskDeleteAsksForConfirmationAndDeletesOnYes() {
+        UUID projectId = projectService.createProject("Course", "").getId();
+        Task task = taskService.createTask(projectId, "Remove me", "", Priority.MEDIUM, null, null);
+
+        cli.runInteractive(new Scanner("task delete " + task.getId() + "\ny\nexit\n"));
+
+        assertThat(outContent.toString()).contains("Remove me", "[y/N]", "Task deleted: " + task.getId());
+        assertThat(taskService.listTasks()).isEmpty();
+    }
+
+    @Test
+    void taskDeleteOfUnknownTaskReportsNotFound() {
+        UUID unknownId = UUID.randomUUID();
+
+        cli.executeLine("task delete " + unknownId);
+
+        assertThat(errContent.toString()).contains("Task not found", unknownId.toString())
+                .doesNotContain("Exception");
+        assertThat(outContent.toString()).doesNotContain("[y/N]");
+    }
+
     @ParameterizedTest
     @CsvSource(value = {
             "60, 60 min, -15 min",
