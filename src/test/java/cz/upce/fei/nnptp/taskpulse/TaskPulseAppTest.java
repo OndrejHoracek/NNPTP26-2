@@ -11,6 +11,7 @@ import cz.upce.fei.nnptp.taskpulse.storage.InMemoryProjectRepository;
 import cz.upce.fei.nnptp.taskpulse.storage.InMemoryTaskRepository;
 import cz.upce.fei.nnptp.taskpulse.storage.ProjectRepository;
 import cz.upce.fei.nnptp.taskpulse.storage.TaskRepository;
+import cz.upce.fei.nnptp.taskpulse.storage.IWorkspaceUnitOfWork;
 import cz.upce.fei.nnptp.taskpulse.storage.csv.CsvStorageManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,7 +59,7 @@ class TaskPulseAppTest {
         TaskPulseApp.run(new String[] { "task", "add", projectId, "Implement CSV escaping" }, dataDir);
         Task task = onlyTask();
         assertThat(task.getTitle()).isEqualTo("Implement CSV escaping");
-
+        
         String taskId = task.getId().toString();
         TaskPulseApp.run(new String[] { "task", "transition", taskId, "IN_PROGRESS" }, dataDir);
         TaskPulseApp.run(new String[] { "worklog", "log", taskId, "45", "--author", "Student Developer", "--desc",
@@ -116,14 +117,18 @@ class TaskPulseAppTest {
     }
 
     private Project onlyProject() {
-        var projects = new CsvStorageManager(dataDir).load().projectRepository().findAll();
-        assertThat(projects).hasSize(1);
-        return projects.get(0);
+        try (IWorkspaceUnitOfWork unitOfWork = new CsvStorageManager(dataDir).openUnitOfWork()) {
+            var projects = unitOfWork.projects().findAll();
+            assertThat(projects).hasSize(1);
+            return projects.get(0);
+        }
     }
 
     private Task onlyTask() {
-        var tasks = new CsvStorageManager(dataDir).load().taskRepository().findAll();
-        assertThat(tasks).hasSize(1);
-        return tasks.get(0);
+        try (IWorkspaceUnitOfWork unitOfWork = new CsvStorageManager(dataDir).openUnitOfWork()) {
+            var tasks = unitOfWork.tasks().findAll();
+            assertThat(tasks).hasSize(1);
+            return tasks.get(0);
+        }
     }
 }
