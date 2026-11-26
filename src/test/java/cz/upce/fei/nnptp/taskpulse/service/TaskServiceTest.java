@@ -192,6 +192,27 @@ class TaskServiceTest {
                 .hasMessageContaining("Invalid date range");
     }
 
+    @Test
+    void findTasksRejectsUnknownProject() {
+        Project project = projectService.createProject("P", "");
+        taskService.createTask(project.getId(), "Alpha", "", Priority.HIGH, null, null);
+        UUID unknownId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> taskService.findTasks(
+                TaskQuery.builder().projectId(unknownId).priority(Priority.HIGH).build()))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Project not found with id: " + unknownId);
+    }
+
+    @Test
+    void findTasksReturnsEmptyListForExistingProjectWithoutTasks() {
+        Project empty = projectService.createProject("Empty", "");
+        Project other = projectService.createProject("Other", "");
+        taskService.createTask(other.getId(), "Alpha", "", Priority.HIGH, null, null);
+
+        assertThat(taskService.findTasks(TaskQuery.builder().projectId(empty.getId()).build())).isEmpty();
+    }
+
     @ParameterizedTest
     @CsvSource(value = {
             "none, 45, 0, false",
