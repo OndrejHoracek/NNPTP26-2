@@ -89,7 +89,9 @@ class TaskPulseAppTest {
             System.setIn(originalIn);
         }
 
-        assertThat(new CsvStorageManager(dataDir).load().taskRepository().findAll()).hasSize(remainingTasks);
+        try (IWorkspaceUnitOfWork unitOfWork = new CsvStorageManager(dataDir).openUnitOfWork()) {
+            assertThat(unitOfWork.tasks().findAll()).hasSize(remainingTasks);
+        }
     }
 
     @Test

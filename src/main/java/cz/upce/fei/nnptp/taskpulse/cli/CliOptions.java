@@ -7,8 +7,9 @@ import java.util.Map;
 import java.util.Set;
 
 final class CliOptions {
-    private static final Set<String> FLAGS = Set.of("--overdue", "--exceeded", "--yes");
-    private static final Set<String> VALUE_OPTIONS = Set.of(
+    private static final Set<String> FLAGS = Set.of("--overdue", "--yes");
+    private static final Set<String> OPTIONAL_VALUE_OPTIONS = Set.of("--exceeded");
+    private static final Set<String> REQUIRED_VALUE_OPTIONS = Set.of(
             "--project", "--state", "--priority", "--label",
             "--search", "--sort", "--from", "--to",
             "--author", "--desc"
@@ -28,26 +29,23 @@ final class CliOptions {
             if (!name.startsWith("--")) {
                 continue;
             }
-            if (!VALUE_OPTIONS.contains(name) && !FLAGS.contains(name)) {
+            boolean optionalValue = OPTIONAL_VALUE_OPTIONS.contains(name);
+            if (!REQUIRED_VALUE_OPTIONS.contains(name) && !FLAGS.contains(name) && !optionalValue) {
                 throw new IllegalArgumentException("Unknown option: " + name);
             }
 
-            if (equalsIndex >= 0) {
-                if (VALUE_OPTIONS.contains(name)) {
-                    options.values.put(name, argument.substring(equalsIndex + 1));
-                }
-            } else if (FLAGS.contains(name)) {
-                if (name.equals("--exceeded") && i + 1 < args.size()
-                        && !args.get(i + 1).startsWith("--")) {
-                    options.values.put(name, args.get(++i));
-                } else {
+            if (FLAGS.contains(name)) {
+                if (equalsIndex < 0) {
                     options.values.put(name, "");
                 }
-            } else {
-                if (i + 1 >= args.size() || args.get(i + 1).startsWith("--")) {
-                    throw new IllegalArgumentException("Missing value for option " + name);
-                }
+            } else if (equalsIndex >= 0) {
+                options.values.put(name, argument.substring(equalsIndex + 1));
+            } else if (i + 1 < args.size() && !args.get(i + 1).startsWith("--")) {
                 options.values.put(name, args.get(++i));
+            } else if (optionalValue) {
+                options.values.put(name, "");
+            } else {
+                throw new IllegalArgumentException("Missing value for option " + name);
             }
         }
         return options;
