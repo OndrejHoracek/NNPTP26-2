@@ -114,6 +114,35 @@ class TaskServiceTest {
     }
 
     @Test
+    void listsOnlyTasksFromSelectedProject() {
+        UUID projectId = projectService.createProject("Dev", "").getId();
+        UUID otherProjectId = projectService.createProject("Docs", "").getId();
+        Task first = taskService.createTask(projectId, "Implement feature", "", Priority.MEDIUM, null, null);
+        taskService.createTask(otherProjectId, "Update guide", "", Priority.MEDIUM, null, null);
+        Task second = taskService.createTask(projectId, "Review change", "", Priority.MEDIUM, null, null);
+
+        assertThat(taskService.listTasksForProject(projectId)).containsExactlyInAnyOrder(first, second);
+    }
+
+    @Test
+    void listsNoTasksForEmptyProject() {
+        UUID emptyProjectId = projectService.createProject("Empty", "").getId();
+        UUID otherProjectId = projectService.createProject("Dev", "").getId();
+        taskService.createTask(otherProjectId, "Review change", "", Priority.MEDIUM, null, null);
+
+        assertThat(taskService.listTasksForProject(emptyProjectId)).isEmpty();
+    }
+
+    @Test
+    void rejectsListingTasksForUnknownProject() {
+        UUID projectId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> taskService.listTasksForProject(projectId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining(projectId.toString());
+    }
+
+    @Test
     void cannotDeleteProjectWithTasks() {
         Project project = projectService.createProject("Dev", "");
         taskService.createTask(project.getId(), "T1", "", Priority.LOW, null, null);
@@ -190,6 +219,27 @@ class TaskServiceTest {
         assertThatThrownBy(() -> TaskQuery.builder().dueDateRange(fromDate, toDate).build())
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("Invalid date range");
+    }
+
+    @Test
+    void findTasksRejectsUnknownProject() {
+        Project project = projectService.createProject("P", "");
+        taskService.createTask(project.getId(), "Alpha", "", Priority.HIGH, null, null);
+        UUID unknownId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> taskService.findTasks(
+                TaskQuery.builder().projectId(unknownId).priority(Priority.HIGH).build()))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Project not found with id: " + unknownId);
+    }
+
+    @Test
+    void findTasksReturnsEmptyListForExistingProjectWithoutTasks() {
+        Project empty = projectService.createProject("Empty", "");
+        Project other = projectService.createProject("Other", "");
+        taskService.createTask(other.getId(), "Alpha", "", Priority.HIGH, null, null);
+
+        assertThat(taskService.findTasks(TaskQuery.builder().projectId(empty.getId()).build())).isEmpty();
     }
 
     @ParameterizedTest

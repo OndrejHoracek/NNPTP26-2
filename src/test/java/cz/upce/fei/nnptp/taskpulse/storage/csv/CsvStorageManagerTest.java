@@ -9,6 +9,9 @@ import cz.upce.fei.nnptp.taskpulse.domain.Worklog;
 import cz.upce.fei.nnptp.taskpulse.domain.exception.ValidationException;
 import cz.upce.fei.nnptp.taskpulse.storage.InMemoryProjectRepository;
 import cz.upce.fei.nnptp.taskpulse.storage.InMemoryTaskRepository;
+import cz.upce.fei.nnptp.taskpulse.storage.IWorkspaceUnitOfWork;
+import cz.upce.fei.nnptp.taskpulse.storage.ProjectRepository;
+import cz.upce.fei.nnptp.taskpulse.storage.TaskRepository;
 import cz.upce.fei.nnptp.taskpulse.storage.StorageException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,9 +50,9 @@ class CsvStorageManagerTest {
         task.addWorklog(new Worklog(LocalDateTime.of(2026, 10, 21, 14, 30), 45, "Petr Novák", "Práce, testy \"hotovo\""));
         taskRepo.save(task);
 
-        storage.save(projectRepo, taskRepo);
+        save(storage, projectRepo, taskRepo);
 
-        CsvStorageManager.LoadedWorkspace loaded = storage.load();
+        LoadedWorkspace loaded = load(storage);
 
         assertThat(loaded.projectRepository().findAll()).hasSize(1);
         Project loadedProject = loaded.projectRepository().findById(project.getId()).orElseThrow();
@@ -81,7 +84,7 @@ class CsvStorageManagerTest {
         InMemoryProjectRepository originalRepo = new InMemoryProjectRepository();
         originalRepo.save(new Project(UUID.randomUUID(), "Original", "Original data"));
 
-        storage.save(originalRepo, taskRepo);
+        save(storage, originalRepo, taskRepo);
 
         Path projectsFile = tempDir.resolve("projects.csv");
         byte[] originalContent = Files.readAllBytes(projectsFile);
@@ -96,7 +99,7 @@ class CsvStorageManagerTest {
             }
         };
 
-        assertThatThrownBy(() -> storage.save(failingRepo, taskRepo))
+        assertThatThrownBy(() -> save(storage, failingRepo, taskRepo))
             .isInstanceOf(NullPointerException.class);
 
         assertThat(Files.readAllBytes(projectsFile))
@@ -111,7 +114,7 @@ class CsvStorageManagerTest {
         byte[] originalContent = Files.readAllBytes(source);
         CsvStorageManager storage = new CsvStorageManager(tempDir);
 
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Failed to load projects.csv", "Invalid CSV");
         assertThat(Files.readAllBytes(source)).isEqualTo(originalContent);
@@ -122,7 +125,7 @@ class CsvStorageManagerTest {
         Path nonExistent = tempDir.resolve("does_not_exist");
         CsvStorageManager storage = new CsvStorageManager(nonExistent);
 
-        CsvStorageManager.LoadedWorkspace workspace = storage.load();
+        LoadedWorkspace workspace = load(storage);
         assertThat(workspace.projectRepository().findAll()).isEmpty();
         assertThat(workspace.taskRepository().findAll()).isEmpty();
     }
@@ -136,7 +139,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("projects.csv"), csvContent);
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Duplicate project id");
     }
@@ -151,7 +154,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("tasks.csv"), taskCsv);
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("missing project");
     }
@@ -168,7 +171,7 @@ class CsvStorageManagerTest {
                 taskId + "," + projectId + ",Second,,MEDIUM,TODO,,,\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Duplicate task id");
     }
@@ -181,7 +184,7 @@ class CsvStorageManagerTest {
                 missingTaskId + ",2026-10-21T14:30,30,Petr,\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("missing task")
                 .hasMessageContaining(missingTaskId.toString());
@@ -194,7 +197,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("projects.csv"),
                 "id,name,description\n" + first + ",First,\n\n" + second + ",Second,\n");
 
-        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+        LoadedWorkspace workspace = load(new CsvStorageManager(tempDir));
 
         assertThat(workspace.projectRepository().findAll())
                 .extracting(Project::getId)
@@ -207,7 +210,7 @@ class CsvStorageManagerTest {
                 "id,name,description\n" + UUID.randomUUID() + ",Only name\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Malformed row in projects.csv at line 2");
     }
@@ -218,7 +221,7 @@ class CsvStorageManagerTest {
                 "id,description,name\n" + UUID.randomUUID() + ",Some description,Name\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Unsupported header in projects.csv")
                 .hasMessageContaining("expected 'id,name,description'")
@@ -231,7 +234,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve(fileName), "foo,bar\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Unsupported header in " + fileName);
     }
@@ -241,7 +244,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("worklogs.csv"), "taskId,timestamp,durationMinutes,author\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Unsupported header in worklogs.csv");
     }
@@ -252,7 +255,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("projects.csv"),
                 " id , name , description \n" + id + ",Name,Description\n");
 
-        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+        LoadedWorkspace workspace = load(new CsvStorageManager(tempDir));
 
         assertThat(workspace.projectRepository().findById(id)).isPresent();
     }
@@ -264,7 +267,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("projects.csv"),
                 "\uFEFF" + firstColumn + ",name,description\n" + id + ",Name,Description\n");
 
-        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+        LoadedWorkspace workspace = load(new CsvStorageManager(tempDir));
 
         assertThat(workspace.projectRepository().findById(id)).isPresent();
     }
@@ -273,7 +276,7 @@ class CsvStorageManagerTest {
     void acceptEmptyCsvFileWithoutHeader() throws IOException {
         Files.writeString(tempDir.resolve("projects.csv"), "");
 
-        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+        LoadedWorkspace workspace = load(new CsvStorageManager(tempDir));
 
         assertThat(workspace.projectRepository().findAll()).isEmpty();
     }
@@ -291,7 +294,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("tasks.csv"), taskCsv);
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Label must not be blank");
     }
@@ -309,7 +312,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("tasks.csv"), taskCsv);
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        CsvStorageManager.LoadedWorkspace workspace = storage.load();
+        LoadedWorkspace workspace = load(storage);
 
         Task loadedTask = workspace.taskRepository().findById(taskId).orElseThrow();
         assertThat(loadedTask.getLabels()).isEmpty();
@@ -330,10 +333,10 @@ class CsvStorageManagerTest {
         assertThatThrownBy(() -> task.addLabel("release" + Label.SEPARATOR))
                 .isInstanceOf(ValidationException.class);
 
-        storage.save(projectRepo, taskRepo);
+        save(storage, projectRepo, taskRepo);
 
-        assertThatCode(storage::load).doesNotThrowAnyException();
-        Task reloaded = storage.load().taskRepository().findById(task.getId()).orElseThrow();
+        assertThatCode(() -> load(storage)).doesNotThrowAnyException();
+        Task reloaded = load(storage).taskRepository().findById(task.getId()).orElseThrow();
         assertThat(reloaded.getLabels()).containsExactly("urgent");
     }
 
@@ -347,7 +350,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("tasks.csv"), taskCsv);
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Malformed value in tasks.csv")
                 .hasMessageContaining("line 2")
@@ -365,7 +368,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("tasks.csv"), taskCsv);
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("line 2")
                 .hasMessageContaining("column 'estimatedMinutes'")
@@ -386,7 +389,7 @@ class CsvStorageManagerTest {
                         taskId + ",not-a-timestamp,45,Author,\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("line 2")
                 .hasMessageContaining("column 'timestamp'")
@@ -407,7 +410,7 @@ class CsvStorageManagerTest {
                         taskId + ",2026-10-21T14:30:00,NaN,Author,\n");
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("line 2")
                 .hasMessageContaining("column 'durationMinutes'")
@@ -424,7 +427,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("tasks.csv"), taskCsv);
 
         CsvStorageManager storage = new CsvStorageManager(tempDir);
-        assertThatThrownBy(storage::load)
+        assertThatThrownBy(() -> load(storage))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("line 2")
                 .hasMessageContaining("column 'priority'")
@@ -445,7 +448,7 @@ class CsvStorageManagerTest {
                 "taskId,timestamp,durationMinutes,author,description\n"
                         + taskId + ",2026-10-21T14:30,45,Author,Work" + trailingLines);
 
-        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+        LoadedWorkspace workspace = load(new CsvStorageManager(tempDir));
 
         assertThat(workspace.projectRepository().findAll()).hasSize(1);
         assertThat(workspace.taskRepository().findAll()).hasSize(1);
@@ -458,7 +461,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("projects.csv"),
                 "id,name,description\r\n" + projectId + ",Project,Desc\r\n\r\n\r\n");
 
-        CsvStorageManager.LoadedWorkspace workspace = new CsvStorageManager(tempDir).load();
+        LoadedWorkspace workspace = load(new CsvStorageManager(tempDir));
 
         assertThat(workspace.projectRepository().findAll())
                 .extracting(Project::getId)
@@ -470,7 +473,7 @@ class CsvStorageManagerTest {
         Files.writeString(tempDir.resolve("projects.csv"),
                 "id,name,description\n" + UUID.randomUUID() + ",Project,Desc\n,,\n");
 
-        assertThatThrownBy(new CsvStorageManager(tempDir)::load)
+        assertThatThrownBy(() -> load(new CsvStorageManager(tempDir)))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Empty record in projects.csv at line 3")
                 .hasMessageContaining("only delimiters");
@@ -485,7 +488,7 @@ class CsvStorageManagerTest {
                 "id,projectId,title,description,priority,state,estimatedMinutes,dueDate,labels\n"
                         + ",,,,,,,,\n");
 
-        assertThatThrownBy(new CsvStorageManager(tempDir)::load)
+        assertThatThrownBy(() -> load(new CsvStorageManager(tempDir)))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Empty record in tasks.csv at line 2")
                 .hasMessageContaining("only delimiters");
@@ -505,9 +508,30 @@ class CsvStorageManagerTest {
                         + taskId + ",2026-10-21T14:30,45,Author,Work\n"
                         + " , ,  , ,\n");
 
-        assertThatThrownBy(new CsvStorageManager(tempDir)::load)
+        assertThatThrownBy(() -> load(new CsvStorageManager(tempDir)))
                 .isInstanceOf(StorageException.class)
                 .hasMessageContaining("Empty record in worklogs.csv at line 3")
                 .hasMessageContaining("only delimiters");
     }
+    private static void save(CsvStorageManager storage, ProjectRepository projectRepository, TaskRepository taskRepository) {
+        try (IWorkspaceUnitOfWork unitOfWork = storage.openUnitOfWork()) {
+            projectRepository.findAll().forEach(unitOfWork.projects()::save);
+            taskRepository.findAll().forEach(unitOfWork.tasks()::save);
+            unitOfWork.commit();
+        }
+    }
+
+    private static LoadedWorkspace load(CsvStorageManager storage) {
+        try (IWorkspaceUnitOfWork unitOfWork = storage.openUnitOfWork()) {
+            InMemoryProjectRepository projects = new InMemoryProjectRepository();
+            InMemoryTaskRepository tasks = new InMemoryTaskRepository();
+            unitOfWork.projects().findAll().forEach(projects::save);
+            unitOfWork.tasks().findAll().forEach(tasks::save);
+            return new LoadedWorkspace(projects, tasks);
+        }
+    }
+
+    private record LoadedWorkspace(ProjectRepository projectRepository, TaskRepository taskRepository) {
+    }
+
 }
