@@ -501,12 +501,30 @@ class TaskPulseCliTest {
             "--exceeded --priority HIGH, Review | 15 min over estimate",
             "--exceeded 14, Review | 15 min over estimate",
             "--exceeded 15, No tasks found.",
+            "--exceeded=14, Review | 15 min over estimate",
+            "--exceeded=15, No tasks found.",
+            "--exceeded=0, Review | 15 min over estimate",
+            "--exceeded=, Review | 15 min over estimate",
+            "--EXCEEDED=14 --priority HIGH, Review | 15 min over estimate",
             "--priority LOW --exceeded, No tasks found."
     })
     void taskListShowsOnlyMatchingVarianceAlerts(String options, String expectedOutput) {
         taskWith45RecordedMinutes(30);
         cli.executeLine("task list " + options);
         assertThat(outContent.toString().stripTrailing()).endsWith(expectedOutput);
+        assertThat(errContent.toString()).isEmpty();
+    }
+
+    @Test
+    void taskListEqualsThresholdExcludesTasksWithinEstimateAndWithoutEstimate() {
+        Task exceeded = taskWith45RecordedMinutes(30);
+        taskService.createTask(exceeded.getProjectId(), "Within estimate", "", Priority.HIGH, 30, null);
+        taskService.createTask(exceeded.getProjectId(), "Unestimated", "", Priority.HIGH, null, null);
+
+        cli.executeTokens(List.of("task", "list", "--exceeded=10"));
+
+        assertThat(outContent.toString().lines()).containsExactly(
+                exceeded.getId() + " | IN_PROGRESS | HIGH | Review | 15 min over estimate");
         assertThat(errContent.toString()).isEmpty();
     }
 
@@ -548,9 +566,16 @@ class TaskPulseCliTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"-1, non-negative", "later, whole number", "9223372036854775808, whole number"})
-    void taskListRejectsInvalidVarianceThreshold(String input, String expectedError) {
-        cli.executeLine("task list --exceeded " + input);
+    @CsvSource({
+            "--exceeded -1, non-negative",
+            "--exceeded later, whole number",
+            "--exceeded 9223372036854775808, whole number",
+            "--exceeded=-1, non-negative",
+            "--exceeded=later, whole number",
+            "--exceeded=9223372036854775808, whole number"
+    })
+    void taskListRejectsInvalidVarianceThreshold(String options, String expectedError) {
+        cli.executeLine("task list " + options);
         assertThat(errContent.toString()).contains(expectedError);
         assertThat(outContent.toString()).isEmpty();
     }
